@@ -3,9 +3,6 @@ from airflow.hooks.postgres_hook import PostgresHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 
-# example s3://udacity-dend/log_json_path.json
-# json_log = s3_bucket_loc + log_json_path.json
-
 
 class StageToRedshiftOperator(BaseOperator):
     """
