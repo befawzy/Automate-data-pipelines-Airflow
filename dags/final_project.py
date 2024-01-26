@@ -1,10 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 import pendulum
-import os
-from airflow.decorators import dag, task
+from airflow.decorators import dag
 from airflow.operators.dummy import DummyOperator
-from airflow.operators import PostgresOperator
-from plugins.operators import (
+from airflow.providers.postgres.operators.postgres import PostgresOperator
+from operators import (
     StageToRedshiftOperator,
     LoadFactOperator,
     LoadDimensionOperator,
@@ -14,6 +13,11 @@ from plugins.operators import (
 default_args = {
     "owner": "Beshoy Fawzy",
     "start_date": pendulum.now(),
+    "email_on_failure": True,
+    "email_on_retry": True,
+    "retries": 3,
+    "retry_delay": timedelta(minutes=5),
+    "catchup": True,
 }
 
 
@@ -21,10 +25,9 @@ default_args = {
     default_args=default_args,
     description="Load and transform data in Redshift with Airflow",
     schedule_interval="0 * * * *",
-    default_args=default_args,
 )
 def sparkify_main_dag():
-    with open("./create_tables.sql", "r") as file:
+    with open("/opt/airflow/plugins/helpers/create_tables.sql", "r") as file:
         sql_query = file.read()
 
     create_tables_task = PostgresOperator(
@@ -42,7 +45,7 @@ def sparkify_main_dag():
         table="staging_events",
         s3_bucket="udacity-dend",
         s3_key="events",
-        json_path="s3://udacity-dend/log_json_path.json",
+        json_path="'auto'",
     )
     stage_songs_to_redshift = StageToRedshiftOperator(
         task_id="Stage_songs",
@@ -87,6 +90,8 @@ def sparkify_main_dag():
         task_id="Run_data_quality_checks",
         tables=["songplays", "songs", "artists", "time", "users"],
     )
+    end_operator = DummyOperator(task_id="Stop_execution")
+
     start_operator >> create_tables_task
     create_tables_task >> [stage_events_to_redshift, stage_songs_to_redshift]
     [stage_events_to_redshift, stage_songs_to_redshift] >> load_songplays_table
@@ -102,6 +107,7 @@ def sparkify_main_dag():
         load_time_dimension_table,
         load_user_dimension_table,
     ] >> run_quality_checks
+    run_quality_checks >> end_operator
 
 
 final_project_dag = sparkify_main_dag()
